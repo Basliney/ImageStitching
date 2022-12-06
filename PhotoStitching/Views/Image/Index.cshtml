@@ -1,0 +1,24 @@
+﻿@using PhotoStitching.Models.ViewModels
+@model ImageViewModel
+@{
+
+}
+<p>HELLO_WORLD</p>
+<form method="post" asp-controller="Image" asp-validation-summary="ModelOnly" asp-action="Index" enctype="multipart/form-data">
+    <label asp-for="@Model.ImageFile" class="control-label"></label>
+    <input asp-for="@Model.ImageFile" class="control-form" />
+    <span asp-validation-for="@Model.ImageFile" class="text-danger"></span>
+
+    <label asp-for="@Model.Density" class="control-label"></label>
+    <input asp-for="@Model.Density" class="control-form" />
+    <span asp-validation-for="@Model.Density" class="text-danger"></span>
+
+    <label asp-for="@Model.WidthMax" class="control-label"></label>
+    <input asp-for="@Model.WidthMax" class="control-form" />
+    <span asp-validation-for="@Model.WidthMax" class="text-danger"></span>
+    <input type="submit" class="btn btn-block btn-secondary btn-lg" />
+</form>
+
+@section Scripts{
+    <partial name="_ValidationScriptsPartial" />
+}
