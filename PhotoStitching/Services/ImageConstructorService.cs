@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using PhotoStitching.Models.Classes;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
@@ -19,7 +20,7 @@ namespace PhotoStitching.Services
         public double Density { get; set; }
         public int WidthMax { get; set; }
 
-        private Dictionary<string, (float,float,float)> dataImages = new Dictionary<string, (float, float, float)>();
+        private List<FileImage> dataImages = new List<FileImage>();
         private List<string> files = new List<string>();
 
         async public Task SetImage(IFormFile image)
@@ -29,7 +30,7 @@ namespace PhotoStitching.Services
             {
                 await image.CopyToAsync(memoryStream);  // Упаковываем файл в поток
                 var img = Image.FromStream(memoryStream);   // Вытаскиваем из потока как изображение
-                middleLayer = new Bitmap(img,new Size(Math.Max(800, img.Width), Math.Max(800, img.Width)));  // Передаем в промежуточный слой
+                middleLayer = new Bitmap(img,new Size(1024, 1024));  // Передаем в промежуточный слой
                 ImageConstructor(); // Вызов контруктора изображений
                 dataImages.Clear();
                 GC.Collect();
@@ -48,7 +49,7 @@ namespace PhotoStitching.Services
         /// Конструктор изображения
         /// </summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416:Проверка совместимости платформы", Justification = "<Ожидание>")]
-        public void ImageConstructor()
+        public async Task ImageConstructor()
         {
             var res = middleLayer;
             using (var graphic = Graphics.FromImage(res))
@@ -60,10 +61,10 @@ namespace PhotoStitching.Services
             }
             middleLayer = res;
 
-            OutputImage = CutTheImage(middleLayer);
+            OutputImage = await CutTheImage(middleLayer);
         }
 
-        private Bitmap CutTheImage(Bitmap bitmap)
+        private async Task<Bitmap> CutTheImage(Bitmap bitmap)
         {
             var width = bitmap.Width; var height = bitmap.Height;
             int countOfPair = 6;
@@ -134,26 +135,27 @@ namespace PhotoStitching.Services
             var meanDist = (dist1 + dist2 + dist3 + dist4 + dist5 + dist6) / countOfPair;
             if (meanDist >= lengthBetweenColor && width > WidthMax)
             {
-                firstBitmap = CutTheImage(firstBitmap);
-                secondCuttedBitmap = CutTheImage(secondCuttedBitmap);
-                prelastCuttedBitmap = CutTheImage(prelastCuttedBitmap);
-                lastCuttedBitmap = CutTheImage(lastCuttedBitmap);
+                firstBitmap = await CutTheImage(firstBitmap);
+                secondCuttedBitmap = await CutTheImage(secondCuttedBitmap);
+                prelastCuttedBitmap = await CutTheImage(prelastCuttedBitmap);
+                lastCuttedBitmap = await CutTheImage(lastCuttedBitmap);
             }
             else
             {
-                var firstSimilar = GetSimilarPhoto(labFC, firstBitmap);
-                var secondSimilar = GetSimilarPhoto(labSC, secondCuttedBitmap);
-                var thirdSimilar = GetSimilarPhoto(labTC, prelastCuttedBitmap);
-                var fourthSimilar = GetSimilarPhoto(labLC, lastCuttedBitmap);
+                var firstSimilar = await GetSimilarPhoto(labFC, firstBitmap);
+                var secondSimilar = await GetSimilarPhoto(labSC, secondCuttedBitmap);
+                var thirdSimilar = await GetSimilarPhoto(labTC, prelastCuttedBitmap);
+                var fourthSimilar = await GetSimilarPhoto(labLC, lastCuttedBitmap);
+
                 for (int i = 0; i < width / 2; i++)
                 {
                     for (int j = 0; j < height / 2; j++)
                     {
 
                         firstBitmap.SetPixel(i, j, firstSimilar.GetPixel(i, j));//firstColor);
-                        secondCuttedBitmap.SetPixel(i, j, secondSimilar.GetPixel(i, j)); //secondColor);
-                        prelastCuttedBitmap.SetPixel(i, j, thirdSimilar.GetPixel(i, j)); //thirdColor);
-                        lastCuttedBitmap.SetPixel(i, j, fourthSimilar.GetPixel(i, j)); //fourthColor);
+                        secondCuttedBitmap.SetPixel(i, j, secondSimilar.GetPixel(i, j)); //*/secondColor);
+                        prelastCuttedBitmap.SetPixel(i, j, thirdSimilar.GetPixel(i, j)); //*/thirdColor);
+                        lastCuttedBitmap.SetPixel(i, j, fourthSimilar.GetPixel(i, j));// */fourthColor);
                     }
                 }
             }
@@ -179,59 +181,92 @@ namespace PhotoStitching.Services
             return bitmap;
         }
 
-        private Bitmap GetSimilarPhoto((double, double, double) labColor, Bitmap currentBitmap)
+        private async Task<Bitmap> GetSimilarPhoto((double, double, double) labColor, Bitmap currentBitmap)
         {
-            Bitmap img = new Bitmap(currentBitmap.Width, currentBitmap.Height);
-            var anyImage = dataImages.Where(x => GetDistance(x.Value/*dataImages.GetValueOrDefault(x.Key)*/, labColor) < Density + 2);
-            if (anyImage.Count() > 0)
-            {
-                var selectedObject = anyImage.ElementAt(rnd.Next(anyImage.Count()));
-                img = new Bitmap(Image.FromFile(selectedObject.Key), new Size(currentBitmap.Width, currentBitmap.Height));
-                return img;
-            }
-            //foreach (var item in dataImages)
-            //{
-            //    var path = item.Key;    //$"D:\\Downloads\\dataBase\\VG_100K_2\\{item.Key}.jpg";
-            //    var dist = GetDistance(dataImages.GetValueOrDefault(item.Key), labColor);
-            //    if (dist < Density + 2)
-            //    {
-            //        img = new Bitmap(Image.FromFile(path), new Size(currentBitmap.Width, currentBitmap.Height));
-            //        return img;
-            //    }
-            //}
+
             if (files.Count == 0)
             {
                 files.AddRange(Directory.GetFiles($"D:\\Downloads\\dataBase\\VG_100K_2"));
+                PhotoAnalizer(files);
             }
-            for (int i = dataImages.Count; i < files.Count; i++)
+
+            Bitmap img = new Bitmap(currentBitmap.Width, currentBitmap.Height);
+            var anyImage = GetMinDistance(labColor, out var minImage);    //dataImages.Min(x => GetDistance(x.LABColor, labColor) < Density + 2);
+            if (anyImage.Count() > 0)
             {
-                if (exceptionList.Contains(i))
-                {
-                    continue;
-                }
-                var path = files[i];    //$"D:\\Downloads\\dataBase\\VG_100K_2\\{files[i]}.jpg";
-                try
-                {
-                    var imgSmall = new Bitmap(Image.FromFile(path), new Size(4, 4));
-                    var meanLABColor = RGBToLab(MeanColor(imgSmall));
-                    dataImages.TryAdd(path, meanLABColor);
-                    if (GetDistance(meanLABColor, labColor) < Density + 2 || i == 43903)
-                    {
-                        img = new Bitmap(Image.FromFile(path), new Size(currentBitmap.Width, currentBitmap.Height));
-                        break;
-                    }
-                    img.Dispose();
-                    imgSmall.Dispose();
-                }
-                catch(Exception e)
-                {
-                    new FileInfo(path).MoveTo($"D:\\Downloads\\dataBase\\{i}.jpg");
-                    exceptionList.Add(i);
-                    continue;
-                    Debug.WriteLine(e.Message);
-                }
+                var selectedObject = anyImage.ElementAt(rnd.Next(anyImage.Count()));
+                img = new Bitmap(Image.FromFile(selectedObject.Path), new Size(currentBitmap.Width, currentBitmap.Height));
+
+                img = ColorTransform(img, currentBitmap);
+            }
+            else
+            {
+                img = new Bitmap(Image.FromFile(minImage.Path), new Size(currentBitmap.Width, currentBitmap.Height));
+                img = ColorTransform(img, currentBitmap);
             }
             return img;
+        }
+
+        private List<FileImage> GetMinDistance((double, double, double) labColor, out FileImage minImage)
+        {
+            List<FileImage> result = new List<FileImage>();
+            minImage = dataImages.First();
+            var distance = GetDistance(minImage.LABColor, labColor);
+
+            foreach(var item in dataImages)
+            {
+                var newDistance = GetDistance(item.LABColor, labColor);
+                if (newDistance < distance)
+                {
+                    distance = newDistance;
+                    minImage = item;
+                }
+                if (newDistance < Density + 10)
+                {
+                    result.Add(item);
+                }
+            }
+            return result;
+        }
+
+        private Bitmap ColorTransform(Bitmap img, Bitmap currentBitmap)
+        {
+
+            Bitmap transformedBitmap = new Bitmap(img);
+
+            for (int i =0;i< transformedBitmap.Width; i++)
+            {
+                for (int j = 0; j < transformedBitmap.Height; j++)
+                {
+                    Color meanColor = GetMeanColorOfPixels(img.GetPixel(i, j), currentBitmap.GetPixel(i, j));
+                    transformedBitmap.SetPixel(i, j, meanColor);
+                }
+            }
+
+            return transformedBitmap;
+        }
+
+        private Color GetMeanColorOfPixels(Color newColor, Color targetColor)
+        {
+            return Color.FromArgb((newColor.R + targetColor.R) / 2, (newColor.G + targetColor.G) / 2, (newColor.B + targetColor.B) / 2);
+        }
+
+        private void PhotoAnalizer(List<string> files)
+        {
+            for (int i = dataImages.Count; i < Math.Min(files.Count, 700); i++)
+            {
+                try
+                {
+                    var imgSmall = new Bitmap(Image.FromFile(files[i]), new Size(8, 8));
+                    var meanColor = MeanColor(imgSmall);
+                    var meanLABColor = RGBToLab(meanColor);
+                    dataImages.Add(new FileImage(files[i], meanColor, meanLABColor));
+                }
+                catch (Exception e)
+                {
+                    continue;
+                }
+            }
         }
 
         private double GetDistance((double,double,double) lab1, (double, double, double) lab2)
@@ -240,8 +275,9 @@ namespace PhotoStitching.Services
             var deltaA = lab1.Item2 - lab2.Item2;
             var deltaB = lab1.Item3 - lab2.Item3;
 
-            var c1 = Math.Sqrt(Math.Pow(lab1.Item2, 2) + Math.Pow(lab1.Item3, 2));
-            var c2 = Math.Sqrt(Math.Pow(lab2.Item2, 2) + Math.Pow(lab2.Item3, 2));
+            var c1 = Math.Sqrt(lab1.Item2 * lab1.Item2 + lab1.Item3 * lab1.Item3);
+            var c2 = Math.Sqrt(lab2.Item2 * lab2.Item2 + lab2.Item3 * lab2.Item3);
+            //var c2 = Math.Sqrt(Math.Pow(lab2.Item2, 2) + Math.Pow(lab2.Item3, 2));
             var finalResult = Math.Sqrt(deltaL*deltaL + deltaA*deltaA + deltaB * deltaB);
 
             return finalResult;
@@ -264,43 +300,11 @@ namespace PhotoStitching.Services
                 global_g += g; g = 0;
                 global_b += b; b = 0;
             }
-            global_r /= (Math.Max(c, 1) * Math.Max(j,1));
+            global_r /= (Math.Max(c, 1) * Math.Max(j, 1));
             global_g /= (Math.Max(c, 1) * Math.Max(j, 1));
             global_b /= (Math.Max(c, 1) * Math.Max(j, 1));
 
             return Color.FromArgb(global_r, global_g, global_b);
-        }
-
-        private (double, double, double) RGBtoXYZ(Color color)
-        {
-            double R = ((double)color.R / 255.0);    //R from 0 to 255
-            double G = ((double)color.G / 255.0);    //G from 0 to 255
-            double B = ((double)color.B / 255.0);    //B from 0 to 255
-
-            if (R > 0.04045) 
-                R = Math.Pow(((R + 0.055) / 1.055), 2.4);
-            else 
-                R = R / 12.92;
-
-            if (G > 0.04045) 
-                G = Math.Pow(((G + 0.055) / 1.055), 2.4);
-            else 
-                G = G / 12.92;
-
-            if (B > 0.04045) 
-                B = Math.Pow(((B + 0.055) / 1.055), 2.4);
-            else 
-                B = B / 12.92;
-
-            R = R * 100;
-            G = G * 100;
-            B = B * 100;
-
-            //Observer. = 2°, Illuminant = D65
-            var X = R * 0.4124 + G * 0.3576 + B * 0.1805;
-            var Y = R * 0.2126 + G * 0.7152 + B * 0.0722;
-            var Z = R * 0.0193 + G * 0.1192 + B * 0.9505;
-            return (X, Y, Z);
         }
 
         private (float,float,float) RGBToLab(Color color)
@@ -383,43 +387,8 @@ namespace PhotoStitching.Services
             lab[0] = (116.0f * xyz[1]) - 16.0f;
             lab[1] = 500.0f * (xyz[0] - xyz[1]);
             lab[2] = 200.0f * (xyz[1] - xyz[2]);
-            //Debug.WriteLine("L:" + (int)lab[0]);
-            //Debug.WriteLine("A:" + (int)lab[1]);
-            //Debug.WriteLine("B:" + (int)lab[2]);
 
             return (lab[0], lab[1], lab[2]);
-        }
-
-        private (double, double, double) XYZtoLAB((double, double, double) colorXYZ)
-        {
-            var ref_X = 95.047;
-            var ref_Y = 100.000;
-            var ref_Z = 108.883;
-
-            var X = colorXYZ.Item1 / ref_X;          //ref_X =  95.047   Observer= 2°, Illuminant= D65
-            var Y = colorXYZ.Item2 / ref_Y;          //ref_Y = 100.000
-            var Z = colorXYZ.Item3 / ref_Z;          //ref_Z = 108.883
-
-            if (X > 0.008856) 
-                X = Math.Pow(X, (1.0 / 3.0));
-            else 
-                X = (7.787 * X) + (16.0 / 116.0);
-
-            if (Y > 0.008856) 
-                Y = Math.Pow(Y, (1.0 / 3.0));
-            else 
-                Y = (7.787 * Y) + (16.0 / 116.0);
-
-            if (Z > 0.008856) 
-                Z = Math.Pow(Z, (1.0 / 3.0));
-            else 
-                Z = (7.787 * Z) + (16.0 / 116.0);
-
-            var CIE_L = (116 * Y) - 16;
-            var CIE_a = 500 * (X - Y);
-            var CIE_b = 200 * (Y - Z);
-
-            return (CIE_L, CIE_a, CIE_b);
         }
 
         /// <summary>
