@@ -30,7 +30,7 @@ namespace PhotoStitching.Services
             {
                 await image.CopyToAsync(memoryStream);  // Упаковываем файл в поток
                 var img = Image.FromStream(memoryStream);   // Вытаскиваем из потока как изображение
-                middleLayer = new Bitmap(img,new Size(1024, 1024));  // Передаем в промежуточный слой
+                middleLayer = new Bitmap(img,new Size(2048, 2048));  // Передаем в промежуточный слой
                 ImageConstructor(); // Вызов контруктора изображений
                 dataImages.Clear();
                 GC.Collect();
@@ -66,6 +66,7 @@ namespace PhotoStitching.Services
 
         private async Task<Bitmap> CutTheImage(Bitmap bitmap)
         {
+            //var targetResolution = bitmap.Width * 4;
             var width = bitmap.Width; var height = bitmap.Height;
             int countOfPair = 6;
             double lengthBetweenColor = Density + 2;
@@ -82,7 +83,7 @@ namespace PhotoStitching.Services
             }
 
             Bitmap lastCuttedBitmap = new Bitmap(bitmap.Width / 2, bitmap.Height / 2);
-            for(int i = 0;i < lastCuttedBitmap.Width; i++)
+            for(int i = 0; i < lastCuttedBitmap.Width; i++)
             {
                 for (int j = 0; j < lastCuttedBitmap.Height; j++)
                 {
@@ -147,15 +148,22 @@ namespace PhotoStitching.Services
                 var thirdSimilar = await GetSimilarPhoto(labTC, prelastCuttedBitmap);
                 var fourthSimilar = await GetSimilarPhoto(labLC, lastCuttedBitmap);
 
+                //firstBitmap = new Bitmap(width * 4, height * 4);
+                //secondCuttedBitmap = new Bitmap(width * 4, height * 4);
+                //prelastCuttedBitmap = new Bitmap(width * 4, height * 4);
+                //lastCuttedBitmap = new Bitmap(width * 4, height * 4);
+
                 for (int i = 0; i < width / 2; i++)
                 {
                     for (int j = 0; j < height / 2; j++)
                     {
-
-                        firstBitmap.SetPixel(i, j, firstSimilar.GetPixel(i, j));//firstColor);
-                        secondCuttedBitmap.SetPixel(i, j, secondSimilar.GetPixel(i, j)); //*/secondColor);
-                        prelastCuttedBitmap.SetPixel(i, j, thirdSimilar.GetPixel(i, j)); //*/thirdColor);
-                        lastCuttedBitmap.SetPixel(i, j, fourthSimilar.GetPixel(i, j));// */fourthColor);
+                        //for (int k = 0; k < 4; k++)
+                        //{
+                            firstBitmap.SetPixel(i, j, firstSimilar.GetPixel(i, j));//firstColor);
+                            secondCuttedBitmap.SetPixel(i, j, secondSimilar.GetPixel(i, j)); //*/secondColor);
+                            prelastCuttedBitmap.SetPixel(i, j, thirdSimilar.GetPixel(i, j)); //*/thirdColor);
+                            lastCuttedBitmap.SetPixel(i, j, fourthSimilar.GetPixel(i, j));// */fourthColor);
+                        //}
                     }
                 }
             }
@@ -248,7 +256,7 @@ namespace PhotoStitching.Services
 
         private Color GetMeanColorOfPixels(Color newColor, Color targetColor)
         {
-            return Color.FromArgb((newColor.R + targetColor.R) / 2, (newColor.G + targetColor.G) / 2, (newColor.B + targetColor.B) / 2);
+            return Color.FromArgb((newColor.R + newColor.R + targetColor.R) / 3, (newColor.G * 2 + targetColor.G) / 3, (newColor.B * 2 + targetColor.B) / 3);
         }
 
         private void PhotoAnalizer(List<string> files)
